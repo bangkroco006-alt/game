@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Game Matematika Multiplayer Final + Animasi</title>
+<style>
+body { font-family: 'Segoe UI', sans-serif; text-align:center; background:linear-gradient(135deg,#4facfe,#00f2fe); color:white; margin:0; padding:0; }
+#startScreen { position:fixed; top:0; left:0; width:100%; height:100%; background:linear-gradient(135deg,#667eea,#764ba2); display:flex; flex-direction:column; justify-content:center; align-items:center; z-index:10; }
+input, button { padding:12px; margin:5px; border-radius:10px; border:none; font-size:16px; }
+button { cursor:pointer; }
+#game { display:none; margin-top:20px; background:rgba(0,0,0,0.2); padding:20px; border-radius:20px; width:95%; max-width:500px; margin-left:auto; margin-right:auto; transition: all 0.3s ease; }
+#soal { font-size:22px; margin-bottom:20px; transition: all 0.3s ease; }
+#jawaban button { margin:5px; width:70px; height:50px; font-size:18px; transition: transform 0.2s; }
+#jawaban button:hover { transform: scale(1.1); }
+#hasil { margin-top:20px; padding:15px; background:rgba(255,255,255,0.2); border-radius:15px; }
+#popup { position:fixed; top:0; left:0; width:100%; height:100%; display:none; background:rgba(0,0,0,0.7); justify-content:center; align-items:center; }
+#popupBox { background:white; color:black; padding:20px; border-radius:15px; width:80%; max-width:300px; }
+.player-row { display:flex; justify-content:space-around; margin-bottom:10px; }
+.player-score { padding:5px 10px; border-radius:10px; background:rgba(255,255,255,0.2); flex:1; margin:0 5px; transition: all 0.3s; }
+.current-turn { border:3px solid yellow; box-shadow: 0 0 15px yellow; transform: scale(1.05); }
+#waktu { font-weight:bold; font-size:20px; transition: color 0.3s; }
+.countdown-warning { color:red; font-size:24px; font-weight:bold; animation: pulse 0.5s infinite alternate; }
+@keyframes pulse { from { transform: scale(1); } to { transform: scale(1.2); } }
+#kodeRoomDisplay {
+  margin: 10px auto;
+  padding: 10px 20px;
+  font-size: 20px;
+  font-weight: bold;
+  color: #fff;
+  background: #ff6b6b;
+  border-radius: 15px;
+  width: fit-content;
+}
+
+.correct { background-color: #4CAF50 !important; color:white; transform: scale(1.2); animation: pop 0.5s forwards; }
+.wrong { background-color: #f44336 !important; color:white; animation: shake 0.3s; }
+
+@keyframes pop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.5); }
+  100% { transform: scale(1); }
+}
+
+@keyframes shake {
+  0% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  50% { transform: translateX(5px); }
+  75% { transform: translateX(-5px); }
+  100% { transform: translateX(0); }
+}
+
+#scorePop {
+  position: absolute;
+  font-size: 24px;
+  font-weight: bold;
+  color: yellow;
+  text-shadow: 0 0 5px #fff;
+  animation: floatUp 1s forwards;
+  pointer-events: none;
+}
+
+@keyframes floatUp {
+  0% { transform: translateY(0); opacity:1; }
+  100% { transform: translateY(-50px); opacity:0; }
+}
+</style>
+</head>
+<body>
+
+<div id="startScreen">
+<h1>🎮 Game Matematika Multiplayer</h1>
+<input id="nama" placeholder="Nama pemain">
+<button onclick="mulaiGame()">▶️ Main Solo</button>
+<hr>
+<button onclick="cariLawan()">🔍 Cari Lawan</button>
+<hr>
+<button onclick="buatRoom()">👥 Buat Room Teman</button>
+<div id="kodeRoomDisplay" style="display:none;"></div>
+<input id="kodeRoom" placeholder="Masukkan kode teman">
+<button onclick="joinRoom()">✅ Gabung Room</button>
+</div>
+
+<div id="game">
+<div class="player-row">
+  <div id="p1" class="player-score"></div>
+  <div id="p2" class="player-score"></div>
+</div>
+<h2 id="soal"></h2>
+<div id="jawaban"></div>
+<p>⏱️ Waktu: <span id="waktu">30</span></p>
+<div id="hasil"></div>
+</div>
+
+<div id="popup">
+<div id="popupBox">
+<h3>🌍 Global Ranking</h3>
+<div id="leaderboard"></div>
+<button onclick="tutupPopup()">❌ Tutup</button>
+</div>
+</div>
+
+<!-- SUARA -->
+<audio id="clickSound" src="https://www.soundjay.com/buttons/sounds/button-16.mp3"></audio>
+<audio id="tickSound" src="https://www.soundjay.com/button/sounds/beep-07.mp3"></audio>
+
+<!-- FIREBASE -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script>
+// 🔥 CONFIG FIREBASE ONLINE
+const firebaseConfig = {
+  apiKey: "AIzaSyBqC5EJNNG2uOeCcjOSzJxaheWN6bzMHmc",
+  authDomain: "game-16ffc.firebaseapp.com",
+  projectId: "game-16ffc",
+  storageBucket: "game-16ffc.appspot.com",
+  messagingSenderId: "796216243105",
+  appId: "1:796216243105:web:28b7414951fc178fb551e0",
+  measurementId: "G-3748145W49"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// -------------------- VAR --------------------
+let skor=0, totalSoal=20, nomorSoal=1, waktu=30, timer, jawabanBenar;
+let roomId=null, multiplayer=false, playerNumber=null, giliran=null;
+const soalEl=document.getElementById("soal");
+const hasilEl=document.getElementById("hasil");
+const jawabanEl=document.getElementById("jawaban");
+const namaEl=document.getElementById("nama");
+const popup=document.getElementById("popup");
+const leaderboard=document.getElementById("leaderboard");
+const p1El=document.getElementById("p1");
+const p2El=document.getElementById("p2");
+const clickSound=document.getElementById("clickSound");
+const tickSound=document.getElementById("tickSound");
+
+// -------------------- SOLO --------------------
+function mulaiGame(){
+  if(!namaEl.value){ alert("Masukkan nama!"); return; }
+  document.getElementById("startScreen").style.display="none";
+  document.getElementById("game").style.display="block";
+  multiplayer=false; roomId=null; playerNumber=null;
+  resetGame();
+}
+
+function resetGame(){
+  skor=0; nomorSoal=1; waktu=30;
+  hasilEl.innerHTML="";
+  clearInterval(timer);
+  mulaiTimer();
+  buatSoal();
+}
+
+// -------------------- SOAL --------------------
+function buatSoal(){
+  if(nomorSoal>totalSoal){ selesai(); return; }
+  let tipe=Math.floor(Math.random()*7);
+  let a=Math.floor(Math.random()*12)+1;
+  let b=Math.floor(Math.random()*12)+1;
+  let soal="", jaw=0;
+  if(tipe==0){ soal=`${a} + ${b}`; jaw=a+b; }
+  else if(tipe==1){ soal=`${a} - ${b}`; jaw=a-b; }
+  else if(tipe==2){ soal=`${a} × ${b}`; jaw=a*b; }
+  else if(tipe==3){ soal=`${a*b} ÷ ${b}`; jaw=a; }
+  else if(tipe==4){ soal=`${a+b} mod ${b}`; jaw=(a+b)%b; }
+  else if(tipe==5){ soal=`x + ${b} = ${a+b}`; jaw=a; }
+  else { soal=`${a}!`; jaw=faktorial(a); }
+  jawabanBenar=jaw;
+  soalEl.innerText=`Soal ${nomorSoal}: ${soal}`;
+  tampilkanJawaban();
+}
+
+function faktorial(n){ let res=1; for(let i=1;i<=n;i++) res*=i; return res; }
+
+// -------------------- JAWABAN --------------------
+function tampilkanJawaban(){
+  jawabanEl.innerHTML="";
+  let pilihan=[jawabanBenar];
+  while(pilihan.length<4){
+    let s=jawabanBenar+Math.floor(Math.random()*10)-5;
+    if(!pilihan.includes(s)) pilihan.push(s);
+  }
+  pilihan.sort(()=>Math.random()-0.5);
+  pilihan.forEach(n=>{
+    let b=document.createElement("button");
+    b.innerText=n;
+    b.onclick=()=> jawabanKlik(n);
+    jawabanEl.appendChild(b);
+  });
+}
+
+function jawabanKlik(n){
+  clickSound.play();
+  if(multiplayer && playerNumber!==giliran) return;
+  if(n===jawabanBenar) skor++;
+  if(!multiplayer) {
+    nomorSoal++; setTimeout(buatSoal,300);
+  } else {
+    updateRoom();
+  }
+}
+
+// -------------------- TIMER --------------------
+function mulaiTimer(){
+  clearInterval(timer);
+  timer=setInterval(()=>{
+    waktu--; 
+    const waktuEl=document.getElementById("waktu");
+    waktuEl.textContent=waktu;
+    if(waktu<=5) { 
+      waktuEl.classList.add("countdown-warning");
+      tickSound.play();
+    } else {
+      waktuEl.classList.remove("countdown-warning");
+    }
+    if(waktu<=0){
+      clearInterval(timer);
+      if(!multiplayer) selesai();
+      else nextGiliran();
+    }
+  },1000);
+}
+
+// -------------------- SCORE --------------------
+function simpanScore(){
+  db.collection("scores").add({ nama:namaEl.value, skor:skor, waktu:Date.now() }).catch(e=>console.error(e));
+}
+
+// -------------------- LEADERBOARD --------------------
+function bukaGlobalScore(){
+  db.collection("scores").orderBy("skor","desc").limit(20)
+  .onSnapshot(snapshot=>{
+    let html=""; let i=1;
+    snapshot.forEach(doc=>{
+      let d=doc.data();
+      html+=`${i++}. ${d.nama} - ${d.skor}<br>`;
+    });
+    leaderboard.innerHTML=html;
+    popup.style.display="flex";
+  });
+}
+function tutupPopup(){ popup.style.display="none"; }
+
+// -------------------- SELESAI --------------------
+function selesai(){
+  clearInterval(timer); simpanScore();
+  hasilEl.innerHTML=`<h3>🎯 Skor Akhir: ${skor}</h3>
+  <button onclick="bukaGlobalScore()">🌍 Lihat Skor</button>
+  <button onclick="location.reload()">🔁 Ulang</button>`;
+}
+
+// -------------------- MULTIPLAYER --------------------
+function cariLawan(){
+  if(!namaEl.value){ alert("Masukkan nama!"); return; }
+  document.getElementById("startScreen").style.display="none";
+  document.getElementById("game").style.display="block";
+  multiplayer=true;
+
+  db.collection("waitingRoom").add({nama:namaEl.value, skor:0, waktu:Date.now()})
+  .then(docRef=>{
+    const waitRef=db.collection("waitingRoom").doc(docRef.id);
+    waitRef.onSnapshot(snap=>{
+      const data=snap.data();
+      if(data.roomId){
+        roomId=data.roomId; playerNumber=1; masukRoom();
+        waitRef.delete();
+      }
+    });
+  });
+
+  db.collection("waitingRoom").orderBy("waktu","asc").limit(1).get().then(q=>{
+    if(!q.empty){
+      q.forEach(doc=>{
+        if(doc.data().nama!==namaEl.value){
+          roomId=Math.random().toString(36).substr(2,5);
+          playerNumber=2;
+          db.collection("rooms").doc(roomId).set({
+            player1:{nama:namaEl.value, skor:0},
+            player2:{nama:doc.data().nama, skor:0},
+            currentQuestion:null,
+            started:true,
+            giliran:1
+          });
+          doc.ref.update({roomId});
+          masukRoom();
+        }
+      });
+    }
+  });
+}
+
+function buatRoom(){
+  if(!namaEl.value){ alert("Masukkan nama!"); return; }
+
+  // Kode room angka 5 digit
+  roomId = Math.floor(10000 + Math.random() * 90000).toString();
+  playerNumber = 1;
+
+  // Tampilkan kode room di layar
+  const display = document.getElementById("kodeRoomDisplay");
+  display.innerText = `Kode Room: ${roomId}`;
+  display.style.display = "block";
+
+  db.collection("rooms").doc(roomId).set({
+    player1: {nama:namaEl.value, skor:0},
+    player2: null,
+    currentQuestion: null,
+    started: false,
+    giliran: 1
+  });
+
+  multiplayer = true;
+  masukRoom();
+}
+
+function joinRoom(){
+  if(!namaEl.value){ alert("Masukkan nama!"); return; }
+  let kode=document.getElementById("kodeRoom").value;
+  if(!kode){ alert("Masukkan kode room!"); return; }
+  roomId=kode; playerNumber=2; multiplayer=true;
+  db.collection("rooms").doc(roomId).update({player2:{nama:namaEl.value, skor:0}, started:true})
+  .then(()=>masukRoom());
+}
+
+function masukRoom(){
+  resetGame();
+  const roomRef=db.collection("rooms").doc(roomId);
+  roomRef.onSnapshot(doc=>{
+    const data=doc.data();
+    if(!data) return;
+
+    p1El.innerText=data.player1?`${data.player1.nama}: ${data.player1.skor}`:'-';
+    p2El.innerText=data.player2?`${data.player2.nama}: ${data.player2.skor}`:'-';
+
+    giliran=data.giliran;
+    p1El.className=(playerNumber===1 && giliran===1)?'player-score current-turn':'player-score';
+    p2El.className=(playerNumber===2 && giliran===2)?'player-score current-turn':'player-score';
+
+    if(data.currentQuestion){
+      jawabanBenar=data.currentQuestion.jawaban;
+      soalEl.innerText=`Soal ${nomorSoal}: ${data.currentQuestion.soal}`;
+      tampilkanJawaban();
+    }
+  });
+}
+
+function updateRoom(){
+  if(!roomId) return;
+  const roomRef=db.collection("rooms").doc(roomId);
+  roomRef.get().then(doc=>{
+    let data=doc.data();
+    if(playerNumber===1) data.player1.skor=skor;
+    else data.player2.skor=skor;
+
+    nomorSoal++;
+    let tipe=Math.floor(Math.random()*7);
+    let a=Math.floor(Math.random()*12)+1;
+    let b=Math.floor(Math.random()*12)+1;
+    let soal="", jaw=0;
+    if(tipe==0){ soal=`${a} + ${b}`; jaw=a+b; }
+    else if(tipe==1){ soal=`${a} - ${b}`; jaw=a-b; }
+    else if(tipe==2){ soal=`${a} × ${b}`; jaw=a*b; }
+    else if(tipe==3){ soal=`${a*b} ÷ ${b}`; jaw=a; }
+    else if(tipe==4){ soal=`${a+b} mod ${b}`; jaw=(a+b)%b; }
+    else if(tipe==5){ soal=`x + ${b} = ${a+b}`; jaw=a; }
+    else { soal=`${a}!`; jaw=faktorial(a); }
+
+    jawabanBenar=jaw;
+    let nextGiliran=playerNumber===1?2:1;
+    roomRef.update({player1:data.player1, player2:data.player2, currentQuestion:{soal,jawaban:jaw}, giliran:nextGiliran});
+    waktu=30; mulaiTimer();
+  });
+}
+
+function nextGiliran(){
+  if(!multiplayer) return;
+  const roomRef=db.collection("rooms").doc(roomId);
+  roomRef.get().then(doc=>{
+    let data=doc.data();
+    let nextGiliran=playerNumber===1?2:1;
+    roomRef.update({giliran:nextGiliran});
+    waktu=30; mulaiTimer();
+  });
+}
+</script>
+</body>
+</html>
