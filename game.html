@@ -22,48 +22,13 @@ button { cursor:pointer; }
 #waktu { font-weight:bold; font-size:20px; transition: color 0.3s; }
 .countdown-warning { color:red; font-size:24px; font-weight:bold; animation: pulse 0.5s infinite alternate; }
 @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.2); } }
-#kodeRoomDisplay {
-  margin: 10px auto;
-  padding: 10px 20px;
-  font-size: 20px;
-  font-weight: bold;
-  color: #fff;
-  background: #ff6b6b;
-  border-radius: 15px;
-  width: fit-content;
-}
-
+#kodeRoomDisplay { margin: 10px auto; padding: 10px 20px; font-size: 20px; font-weight: bold; color: #fff; background: #ff6b6b; border-radius: 15px; width: fit-content; }
 .correct { background-color: #4CAF50 !important; color:white; transform: scale(1.2); animation: pop 0.5s forwards; }
 .wrong { background-color: #f44336 !important; color:white; animation: shake 0.3s; }
-
-@keyframes pop {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.5); }
-  100% { transform: scale(1); }
-}
-
-@keyframes shake {
-  0% { transform: translateX(0); }
-  25% { transform: translateX(-5px); }
-  50% { transform: translateX(5px); }
-  75% { transform: translateX(-5px); }
-  100% { transform: translateX(0); }
-}
-
-#scorePop {
-  position: absolute;
-  font-size: 24px;
-  font-weight: bold;
-  color: yellow;
-  text-shadow: 0 0 5px #fff;
-  animation: floatUp 1s forwards;
-  pointer-events: none;
-}
-
-@keyframes floatUp {
-  0% { transform: translateY(0); opacity:1; }
-  100% { transform: translateY(-50px); opacity:0; }
-}
+@keyframes pop { 0% { transform: scale(1); } 50% { transform: scale(1.5); } 100% { transform: scale(1); } }
+@keyframes shake { 0% { transform: translateX(0); } 25% { transform: translateX(-5px); } 50% { transform: translateX(5px); } 75% { transform: translateX(-5px); } 100% { transform: translateX(0); } }
+#scorePop { position: absolute; font-size: 24px; font-weight: bold; color: yellow; text-shadow: 0 0 5px #fff; animation: floatUp 1s forwards; pointer-events: none; }
+@keyframes floatUp { 0% { transform: translateY(0); opacity:1; } 100% { transform: translateY(-50px); opacity:0; } }
 </style>
 </head>
 <body>
@@ -108,7 +73,7 @@ button { cursor:pointer; }
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 <script>
-// 🔥 CONFIG FIREBASE ONLINE
+// 🔥 CONFIG FIREBASE
 const firebaseConfig = {
   apiKey: "AIzaSyBqC5EJNNG2uOeCcjOSzJxaheWN6bzMHmc",
   authDomain: "game-16ffc.firebaseapp.com",
@@ -251,53 +216,12 @@ function selesai(){
 }
 
 // -------------------- MULTIPLAYER --------------------
-function cariLawan(){
-  if(!namaEl.value){ alert("Masukkan nama!"); return; }
-  document.getElementById("startScreen").style.display="none";
-  document.getElementById("game").style.display="block";
-  multiplayer=true;
-
-  db.collection("waitingRoom").add({nama:namaEl.value, skor:0, waktu:Date.now()})
-  .then(docRef=>{
-    const waitRef=db.collection("waitingRoom").doc(docRef.id);
-    waitRef.onSnapshot(snap=>{
-      const data=snap.data();
-      if(data.roomId){
-        roomId=data.roomId; playerNumber=1; masukRoom();
-        waitRef.delete();
-      }
-    });
-  });
-
-  db.collection("waitingRoom").orderBy("waktu","asc").limit(1).get().then(q=>{
-    if(!q.empty){
-      q.forEach(doc=>{
-        if(doc.data().nama!==namaEl.value){
-          roomId=Math.random().toString(36).substr(2,5);
-          playerNumber=2;
-          db.collection("rooms").doc(roomId).set({
-            player1:{nama:namaEl.value, skor:0},
-            player2:{nama:doc.data().nama, skor:0},
-            currentQuestion:null,
-            started:true,
-            giliran:1
-          });
-          doc.ref.update({roomId});
-          masukRoom();
-        }
-      });
-    }
-  });
-}
-
 function buatRoom(){
   if(!namaEl.value){ alert("Masukkan nama!"); return; }
 
-  // Kode room angka 5 digit
   roomId = Math.floor(10000 + Math.random() * 90000).toString();
   playerNumber = 1;
 
-  // Tampilkan kode room di layar
   const display = document.getElementById("kodeRoomDisplay");
   display.innerText = `Kode Room: ${roomId}`;
   display.style.display = "block";
@@ -319,8 +243,17 @@ function joinRoom(){
   let kode=document.getElementById("kodeRoom").value;
   if(!kode){ alert("Masukkan kode room!"); return; }
   roomId=kode; playerNumber=2; multiplayer=true;
-  db.collection("rooms").doc(roomId).update({player2:{nama:namaEl.value, skor:0}, started:true})
-  .then(()=>masukRoom());
+
+  db.collection("rooms").doc(roomId).get().then(doc=>{
+    if(!doc.exists){
+      alert("Kode room tidak ditemukan!");
+      return;
+    }
+    db.collection("rooms").doc(roomId).set({
+      player2:{nama:namaEl.value, skor:0},
+      started:true
+    }, {merge:true}).then(()=>masukRoom());
+  }).catch(e=>alert("Error join room: "+e));
 }
 
 function masukRoom(){
